@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>延迟套利验证器 - 监控面板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .card { background: white; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #f3f4f6; padding: 1.5rem; }
+        .stat-value { font-size: 1.875rem; font-weight: 700; color: #111827; }
+        .stat-label { font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem; }
+        .positive { color: #059669; }
+        .negative { color: #dc2626; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">延迟套利验证器</h1>
+                <p class="text-gray-500 text-sm mt-1">OKX / Binance → Bittap Lead-Lag 监控</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div id="status-indicator" class="flex items-center gap-2">
+                    <div class="w-3 h-3 bg-emerald-500 rounded-full pulse"></div>
+                    <span class="text-sm text-gray-600">运行中</span>
+                </div>
+                <div id="last-update" class="text-sm text-gray-400"></div>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="card">
+                <div id="total-trades" class="stat-value">-</div>
+                <div class="stat-label">总交易数</div>
+            </div>
+            <div class="card">
+                <div id="total-pnl" class="stat-value">-</div>
+                <div class="stat-label">累计 PnL (bps)</div>
+            </div>
+            <div class="card">
+                <div id="win-rate" class="stat-value">-</div>
+                <div class="stat-label">胜率</div>
+            </div>
+            <div class="card">
+                <div id="total-signals" class="stat-value">-</div>
+                <div class="stat-label">信号触发数</div>
+            </div>
+        </div>
+
+        <!-- Two Column Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Latency Card -->
+            <div class="card">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">📊 延迟统计 (ms)</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-100">
+                                <th class="text-left py-2 text-gray-500 font-medium">链路</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">P50</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">P90</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">P99</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">样本数</th>
+                            </tr>
+                        </thead>
+                        <tbody id="latency-table">
+                            <tr><td colspan="5" class="py-4 text-center text-gray-400">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- EV Card -->
+            <div class="card">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">💰 期望值 (EV) 统计</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-100">
+                                <th class="text-left py-2 text-gray-500 font-medium">链路</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">交易数</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">胜率</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">平均盈利</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">平均亏损</th>
+                                <th class="text-right py-2 text-gray-500 font-medium">EV</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ev-table">
+                            <tr><td colspan="6" class="py-4 text-center text-gray-400">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="card mb-8">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">🔗 连接状态</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="connection-status">
+                <div class="text-center text-gray-400">加载中...</div>
+            </div>
+        </div>
+
+        <!-- Latency Chart -->
+        <div class="card mb-8">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">📈 延迟趋势 (P50)</h2>
+            <div class="h-64">
+                <canvas id="latency-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Recent Trades -->
+        <div class="card">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">📋 最近交易</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-100">
+                            <th class="text-left py-2 text-gray-500 font-medium">时间</th>
+                            <th class="text-left py-2 text-gray-500 font-medium">Leader</th>
+                            <th class="text-left py-2 text-gray-500 font-medium">交易对</th>
+                            <th class="text-left py-2 text-gray-500 font-medium">方向</th>
+                            <th class="text-right py-2 text-gray-500 font-medium">PnL (bps)</th>
+                            <th class="text-left py-2 text-gray-500 font-medium">退出原因</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-table">
+                        <tr><td colspan="6" class="py-4 text-center text-gray-400">暂无交易</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let latencyChart = null;
+
+        async function fetchData() {
+            try {
+                const [statusRes, summaryRes, tradesRes, metricsRes] = await Promise.all([
+                    fetch('/api/status'),
+                    fetch('/api/summary'),
+                    fetch('/api/trades'),
+                    fetch('/api/metrics')
+                ]);
+
+                const status = await statusRes.json();
+                const summary = await summaryRes.json();
+                const trades = await tradesRes.json();
+                const metrics = await metricsRes.json();
+
+                updateSummary(summary);
+                updateLatencyTable(summary.latency);
+                updateEVTable(summary.ev);
+                updateConnectionStatus(status.connections);
+                updateTradesTable(trades);
+                updateLatencyChart(metrics);
+                updateLastUpdate();
+            } catch (err) {
+                console.error('Failed to fetch data:', err);
+            }
+        }
+
+        function updateSummary(data) {
+            document.getElementById('total-trades').textContent = data.total_trades || 0;
+            
+            const pnlEl = document.getElementById('total-pnl');
+            pnlEl.textContent = (data.total_pnl_bps || 0).toFixed(2);
+            pnlEl.className = 'stat-value ' + (data.total_pnl_bps >= 0 ? 'positive' : 'negative');
+            
+            document.getElementById('win-rate').textContent = (data.win_rate || 0) + '%';
+            document.getElementById('total-signals').textContent = data.total_signals || 0;
+        }
+
+        function updateLatencyTable(data) {
+            const tbody = document.getElementById('latency-table');
+            let html = '';
+            
+            for (const [key, lat] of Object.entries(data)) {
+                const name = key === 'okx' ? 'OKX→Bittap' : 'Binance→Bittap';
+                html += `
+                    <tr class="border-b border-gray-50">
+                        <td class="py-3 font-medium">${name}</td>
+                        <td class="py-3 text-right">${(lat.ArrivedP50Ms || 0).toFixed(1)}</td>
+                        <td class="py-3 text-right">${(lat.ArrivedP90Ms || 0).toFixed(1)}</td>
+                        <td class="py-3 text-right">${(lat.ArrivedP99Ms || 0).toFixed(1)}</td>
+                        <td class="py-3 text-right text-gray-500">${(lat.Count || 0).toLocaleString()}</td>
+                    </tr>
+                `;
+            }
+            tbody.innerHTML = html || '<tr><td colspan="5" class="py-4 text-center text-gray-400">无数据</td></tr>';
+        }
+
+        function updateEVTable(data) {
+            const tbody = document.getElementById('ev-table');
+            let html = '';
+            
+            for (const [key, ev] of Object.entries(data)) {
+                const name = key === 'okx' ? 'OKX' : 'Binance';
+                const winRate = ev.Count > 0 ? ((ev.WinRate || 0) * 100).toFixed(1) + '%' : 'N/A';
+                const evClass = (ev.EV || 0) >= 0 ? 'positive' : 'negative';
+                html += `
+                    <tr class="border-b border-gray-50">
+                        <td class="py-3 font-medium">${name}</td>
+                        <td class="py-3 text-right">${ev.Count || 0}</td>
+                        <td class="py-3 text-right">${winRate}</td>
+                        <td class="py-3 text-right positive">${(ev.AvgProfit || 0).toFixed(2)}</td>
+                        <td class="py-3 text-right negative">${(ev.AvgLoss || 0).toFixed(2)}</td>
+                        <td class="py-3 text-right font-semibold ${evClass}">${(ev.EV || 0).toFixed(2)}</td>
+                    </tr>
+                `;
+            }
+            tbody.innerHTML = html || '<tr><td colspan="6" class="py-4 text-center text-gray-400">无数据</td></tr>';
+        }
+
+        function updateConnectionStatus(data) {
+            const container = document.getElementById('connection-status');
+            let html = '';
+            
+            const exchanges = [
+                { key: 'okx', name: 'OKX', color: 'blue' },
+                { key: 'binance', name: 'Binance', color: 'yellow' },
+                { key: 'bittap', name: 'Bittap', color: 'purple' }
+            ];
+            
+            for (const ex of exchanges) {
+                const conn = data[ex.key] || {};
+                const isOk = (conn.LastMessageAgeMs || 0) < 5000;
+                html += `
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-medium text-gray-900">${ex.name}</span>
+                            <span class="w-2 h-2 rounded-full ${isOk ? 'bg-emerald-500' : 'bg-red-500'}"></span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <span class="text-gray-500">更新速率</span>
+                                <div class="font-medium">${(conn.UpdatesPerSec || 0).toFixed(0)} msg/s</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">最后消息</span>
+                                <div class="font-medium">${(conn.LastMessageAgeMs || 0)}ms 前</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">重连次数</span>
+                                <div class="font-medium">${conn.ReconnectCount || 0}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">解析错误</span>
+                                <div class="font-medium">${conn.ParseErrorCount || 0}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+
+        function updateTradesTable(trades) {
+            const tbody = document.getElementById('trades-table');
+            if (!trades || trades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="py-4 text-center text-gray-400">暂无交易</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            const recent = trades.slice(-10).reverse();
+            for (const t of recent) {
+                const time = new Date(t.t_entry_ns / 1e6).toLocaleTimeString();
+                const pnlClass = (t.net_pnl_bps || 0) >= 0 ? 'positive' : 'negative';
+                html += `
+                    <tr class="border-b border-gray-50">
+                        <td class="py-2">${time}</td>
+                        <td class="py-2">${t.leader || '-'}</td>
+                        <td class="py-2">${t.symbol_canon || '-'}</td>
+                        <td class="py-2">${t.side || '-'}</td>
+                        <td class="py-2 text-right font-medium ${pnlClass}">${(t.net_pnl_bps || 0).toFixed(2)}</td>
+                        <td class="py-2">${t.exit_reason || '-'}</td>
+                    </tr>
+                `;
+            }
+            tbody.innerHTML = html;
+        }
+
+        function updateLatencyChart(metrics) {
+            if (!metrics || metrics.length === 0) return;
+            
+            const recent = metrics.slice(-30);
+            const labels = recent.map((m, i) => {
+                const d = new Date(m.ts_unix_ns / 1e6);
+                return d.toLocaleTimeString();
+            });
+            const okxData = recent.map(m => m.latency_okx?.ArrivedP50Ms || 0);
+            const binanceData = recent.map(m => m.latency_binance?.ArrivedP50Ms || 0);
+            
+            if (latencyChart) {
+                latencyChart.data.labels = labels;
+                latencyChart.data.datasets[0].data = okxData;
+                latencyChart.data.datasets[1].data = binanceData;
+                latencyChart.update('none');
+            } else {
+                const ctx = document.getElementById('latency-chart').getContext('2d');
+                latencyChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'OKX→Bittap',
+                                data: okxData,
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                tension: 0.3,
+                                fill: true
+                            },
+                            {
+                                label: 'Binance→Bittap',
+                                data: binanceData,
+                                borderColor: 'rgb(234, 179, 8)',
+                                backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                                tension: 0.3,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'ms' }
+                            }
+                        },
+                        plugins: {
+                            legend: { position: 'top' }
+                        }
+                    }
+                });
+            }
+        }
+
+        function updateLastUpdate() {
+            document.getElementById('last-update').textContent = 
+                '更新于 ' + new Date().toLocaleTimeString();
+        }
+
+        // 初始加载
+        fetchData();
+        
+        // 每 5 秒刷新
+        setInterval(fetchData, 5000);
+    </script>
+</body>
+</html>

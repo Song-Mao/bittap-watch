@@ -1,0 +1,64 @@
+{
+    "code": "0",
+    "data": {
+        "coins": [//币种信息
+            {
+                "coinSymbol": "ETH",//币种code
+                "id": "1",//id
+                "infoSource": "CMC_COINGECKO",
+                "logo": "https://s01.bittap.com/public/c0b201ed710d2291e92b3a567aae31a0.png",//logo
+                "preciousInout": 8,//出入金精度
+                "preciousShow": 8,//展示精度
+                "preciousSummaryShow": 4,//聚合展示精度
+                "settlePrecision": 8,//结算精度
+                "shortName": "Ethereum",//名称
+                "sort": null,//排序
+                "status": 1,//状态
+                "statusDeposit": 1,//充值状态
+                "statusShow": 1,//展示状态
+                "statusWithdraw": 1,//提现状态
+                "tradeFeePrecision": 8,//交易精度
+                "withdrawDayMax": "100000000",//单日最大提现数量
+                "withdrawMax": "100000000",//单笔最大提现数量
+                "withdrawMin": "0.001"//最小提现数量
+            }
+        ],
+ 
+        "spotSymbols": [
+            {
+                "baseCode": "ETH",//base币种
+                "baseId": "1",//base币种ID
+                "baseQuantityStep": "0.0001",//base币种步长
+                "depths": [//深度精度
+                    "0.01",
+                    "0.1",
+                    "1",
+                    "10"
+                ],
+                "id": "1",//交易对id
+                "makerFeeRate": "0.002",//maker手续费率
+                "maxOrderAmount": "1000000",//单笔最大quote数量
+                "maxOrderCount": 100000,//最大订单数量
+                "maxOrderQuantity": "500",//单笔最大base数量
+                "minOrderAmount": "10",//单笔最小quote数量
+                "minOrderQuantity": "0.01",//单笔最小base数量
+                "openTime": 1743469200000,//开盘时间
+                "previewTime": 1743465600000,//展示时间
+                "priceLimitRate": "0.3",//风险限额率
+                "pricePrecision": 2,//价格精度
+                "priceStep": "0.01",//价格步长
+                "quantityPrecision": 4,//base币种精度
+                "quoteCode": "USDT",//quote币种
+                "quoteId": "5",//quote币种ID
+                "quoteQuantityStep": "0.01",//quote币种步长
+                "recommended": "YES",//是否推荐
+                "status": "OPEN",//状态
+                "symbolId": "ETH-USDT",//交易对code
+                "symbolName": "ETH/USDT",//交易对名称
+                "takerFeeRate": "0.002"//taker手续费率
+            }
+        ]
+    },
+    "msg": "请求成功",
+    "success": true
+}

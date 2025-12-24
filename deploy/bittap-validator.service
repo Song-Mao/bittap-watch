@@ -1,0 +1,26 @@
+[Unit]
+Description=Bittap Latency Arbitrage Validator
+After=network.target
+
+[Service]
+Type=simple
+User=validator
+Group=validator
+WorkingDirectory=/opt/bittap-validator
+ExecStart=/opt/bittap-validator/validator --config /opt/bittap-validator/config.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# 资源限制
+LimitNOFILE=65535
+MemoryMax=1G
+
+# 安全设置
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/bittap-validator/output
+
+[Install]
+WantedBy=multi-user.target

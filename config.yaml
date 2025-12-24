@@ -1,0 +1,74 @@
+app:
+  name: "latency-arbitrage-validator"
+  log_level: "info"
+
+# 用户输入交易对（必须可同时映射到 OKX/Binance/Bittap）
+symbols:
+  - input: "BTC-USDT"
+  - input: "ETH-USDT"
+  - input: "SOL-USDT"
+  - input: "ADA-USDT"
+  - input: "DOGE-USDT"
+  - input: "LTC-USDT"
+  - input: "XLM-USDT"
+  - input: "TRX-USDT"
+  - input: "XRP-USDT"
+  - input: "AVNT-USDT"
+
+# 三家交易所合约元数据 API（启动时拉取并做 symbol 映射）
+metadata:
+  okx: "https://www.okx.com/api/v5/public/instruments?instType=SWAP"
+  binance: "https://fapi.binance.com/fapi/v1/exchangeInfo"
+  bittap: "https://api.bittap.com/asset/public/v1/exchange/info"
+  timeout_ms: 10000
+
+# 公共行情 WebSocket（严禁私有 WS / 登录 / 任何真实交易请求）
+ws:
+  okx:
+    url: "wss://ws.okx.com:8443/ws/v5/public"
+    ping_interval_ms: 25000
+    pong_timeout_ms: 10000
+    read_timeout_ms: 0
+  binance:
+    url: "wss://fstream.binance.com/ws"
+    ping_interval_ms: 15000
+    pong_timeout_ms: 0
+    read_timeout_ms: 30000
+  bittap:
+    url: "wss://stream.bittap.com/endpoint?format=JSON"
+    ping_interval_ms: 18000
+    pong_timeout_ms: 0
+    read_timeout_ms: 30000
+
+# 手续费仅用于影子成交估算（effective_fee = raw_fee × (1 - rebate_rate)）
+fees:
+  bittap:
+    taker_rate: 0.0006
+    maker_rate: 0.0002
+    rebate_rate: 0.85
+
+# 信号与过滤器参数（两条链路 OKX→Bittap / Binance→Bittap 独立统计与执行）
+strategy:
+  theta_entry_bps: 15
+  persist_ms: 150
+  min_depth_usd: 0
+  vol_filter_enabled: false
+  vol_threshold: 0.0
+  cooldown_ms: 3000
+
+# 影子成交（严禁真实下单）
+paper:
+  tp_ratio: 0.5
+  sl_ratio: 0.5
+  max_hold_ms: 60000
+  slippage_bps: 2
+
+# 输出（JSONL 异步写盘）
+output:
+  dir: "./output"
+  signals_enabled: true
+  paper_trades_enabled: true
+  metrics_enabled: true
+  metrics_interval_ms: 10000
+  buffer_size: 5000
+
