@@ -1,74 +1,200 @@
+# ==============================================================================
+# 延迟套利验证器配置文件 (Latency Arbitrage Validator Config)
+# ==============================================================================
+# 项目定位：OKX/Binance → Bittap 的 lead-lag 机会验证器
+# 部署环境：GCP Tokyo, 单进程, IPv4, 4 核
+# 严禁事项：本项目【严禁真实下单】，只做行情采集 + 统计 + 影子成交
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 应用基础配置
+# ------------------------------------------------------------------------------
 app:
-  name: "latency-arbitrage-validator"
-  log_level: "info"
+  name: "latency-arbitrage-validator"    # 应用名称，用于日志标识
+  log_level: "info"                       # 日志级别: debug/info/warn/error
+                                          # - debug: 输出所有调试信息（热路径禁止使用）
+                                          # - info:  默认级别，输出关键运行状态
+                                          # - warn:  仅警告和错误
+                                          # - error: 仅错误
 
-# 用户输入交易对（必须可同时映射到 OKX/Binance/Bittap）
+# ------------------------------------------------------------------------------
+# 交易对配置 (Symbol Mapping)
+# ------------------------------------------------------------------------------
+# 用户输入交易对格式: "BASE-QUOTE" (如 BTC-USDT)
+# 启动时会自动映射到三家交易所的实际合约:
+#   - OKX:     instId (如 BTC-USDT-SWAP)
+#   - Binance: symbol (如 BTCUSDT)
+#   - Bittap:  symbol + tickSize
+# 【重要】只有三家交易所都支持的交易对才会被订阅
 symbols:
-  - input: "BTC-USDT"
-  - input: "ETH-USDT"
-  - input: "SOL-USDT"
-  - input: "ADA-USDT"
-  - input: "DOGE-USDT"
-  - input: "LTC-USDT"
-  - input: "XLM-USDT"
-  - input: "TRX-USDT"
-  - input: "XRP-USDT"
-  - input: "AVNT-USDT"
+  - input: "BTC-USDT"     # 比特币/USDT 永续合约
+  - input: "ETH-USDT"     # 以太坊/USDT 永续合约
+  - input: "SOL-USDT"     # Solana/USDT 永续合约
+  - input: "ADA-USDT"     # Cardano/USDT 永续合约
+  - input: "DOGE-USDT"    # 狗狗币/USDT 永续合约
+  - input: "LTC-USDT"     # 莱特币/USDT 永续合约
+  - input: "XLM-USDT"     # 恒星币/USDT 永续合约
+  - input: "TRX-USDT"     # 波场/USDT 永续合约
+  - input: "XRP-USDT"     # 瑞波币/USDT 永续合约
+  - input: "AVNT-USDT"    # AVNT/USDT 永续合约
 
-# 三家交易所合约元数据 API（启动时拉取并做 symbol 映射）
+# ------------------------------------------------------------------------------
+# 合约元数据 API (Metadata Endpoints)
+# ------------------------------------------------------------------------------
+# 启动时调用这些公共 REST API 拉取合约信息，用于:
+#   1. Symbol 映射验证（确认交易对存在）
+#   2. 获取 tickSize/lotSize（用于价格精度校验）
+#   3. 获取交易状态（确认可交易）
 metadata:
   okx: "https://www.okx.com/api/v5/public/instruments?instType=SWAP"
+                                          # OKX 永续合约列表
   binance: "https://fapi.binance.com/fapi/v1/exchangeInfo"
+                                          # Binance U本位永续合约信息
   bittap: "https://api.bittap.com/asset/public/v1/exchange/info"
-  timeout_ms: 10000
+                                          # Bittap 交易所合约信息
+  timeout_ms: 10000                       # HTTP 请求超时（毫秒），建议 5000-15000
 
-# 公共行情 WebSocket（严禁私有 WS / 登录 / 任何真实交易请求）
+# ------------------------------------------------------------------------------
+# 公共行情 WebSocket 配置 (Public Market Data WS)
+# ------------------------------------------------------------------------------
+# 【严禁】私有 WS / 登录认证 / 任何真实交易请求
+# 心跳机制说明:
+#   - ping_interval_ms: 客户端主动发送 ping 的间隔
+#   - pong_timeout_ms:  等待 pong 响应的超时时间（0 表示不检测）
+#   - read_timeout_ms:  读取超时，超时触发重连（0 表示不限制）
 ws:
   okx:
     url: "wss://ws.okx.com:8443/ws/v5/public"
-    ping_interval_ms: 25000
-    pong_timeout_ms: 10000
-    read_timeout_ms: 0
+                                          # OKX 公共行情 WebSocket (books5 推送)
+    ping_interval_ms: 25000               # OKX 要求 <30s 发送心跳
+    pong_timeout_ms: 10000                # 等待 pong 响应超时
+    read_timeout_ms: 0                    # 不设读超时（OKX 推送频繁）
   binance:
     url: "wss://fstream.binance.com/ws"
-    ping_interval_ms: 15000
-    pong_timeout_ms: 0
-    read_timeout_ms: 30000
+                                          # Binance U本位永续公共行情 WS
+    ping_interval_ms: 15000               # Binance 协议层自动 ping/pong
+    pong_timeout_ms: 0                    # 依赖协议层心跳，不做应用层检测
+    read_timeout_ms: 30000                # 读超时，超过则重连
   bittap:
     url: "wss://stream.bittap.com/endpoint?format=JSON"
-    ping_interval_ms: 18000
-    pong_timeout_ms: 0
-    read_timeout_ms: 30000
+                                          # Bittap 公共行情 WS (JSON 格式)
+    ping_interval_ms: 18000               # 客户端需发送 JSON PING
+    pong_timeout_ms: 0                    # 不做应用层 pong 检测
+    read_timeout_ms: 30000                # 读超时
 
-# 手续费仅用于影子成交估算（effective_fee = raw_fee × (1 - rebate_rate)）
+# ------------------------------------------------------------------------------
+# 手续费配置 (Fee Structure)
+# ------------------------------------------------------------------------------
+# 仅用于影子成交（Paper Trading）的 PnL 计算
+# 公式: effective_fee = raw_fee × (1 - rebate_rate)
+# 例如: taker_rate=0.0006, rebate_rate=0.85
+#       → effective_taker_fee = 0.0006 × (1-0.85) = 0.00009 = 0.9bps
+# 
+# 【重要】Leader 端 (OKX/Binance) 不发生实际交易，故不配置其费率
 fees:
   bittap:
-    taker_rate: 0.0006
-    maker_rate: 0.0002
-    rebate_rate: 0.85
+    taker_rate: 0.0006                    # Taker 费率 (6bps = 0.06%)
+    maker_rate: 0.0002                    # Maker 费率 (2bps = 0.02%)
+    rebate_rate: 0.85                     # 返佣比例 (85% 返还)
+                                          # VIP/MM 账户可享受更高返佣
 
-# 信号与过滤器参数（两条链路 OKX→Bittap / Binance→Bittap 独立统计与执行）
+# ------------------------------------------------------------------------------
+# 策略参数 (Strategy Parameters)
+# ------------------------------------------------------------------------------
+# Leader-Follower 模型: OKX/Binance 为信号源(Leader)，Bittap 为执行端(Follower)
+# 两条链路 (OKX→Bittap / Binance→Bittap) 独立统计，互不干扰
+#
+# 入场条件 (Entry Condition):
+#   - 多头信号: Leader_Bid - Follower_Ask > θ_entry
+#   - 空头信号: Follower_Bid - Leader_Ask > θ_entry
+#   其中 ΔP 必须持续 persist_ms 毫秒才触发入场
 strategy:
-  theta_entry_bps: 15
-  persist_ms: 150
-  min_depth_usd: 0
-  vol_filter_enabled: false
-  vol_threshold: 0.0
-  cooldown_ms: 3000
+  theta_entry_bps: 15                     # 入场阈值 θ_entry (bps)
+                                          # 15bps = 0.15% 价差才触发信号
+                                          # 必须覆盖: 双边 Taker 费用 + 滑点 + 安全边际
+                                          # 建议范围: 10-30bps (根据品种流动性调整)
 
-# 影子成交（严禁真实下单）
+  persist_ms: 150                         # 价差持续时间过滤（毫秒）
+                                          # 价差必须持续 N ms 才确认信号
+                                          # 过滤噪声/闪烁行情，防止假突破
+                                          # 建议范围: 100-300ms
+
+  min_depth_usd: 0                        # 最小深度过滤（USD）
+                                          # BBO 挂单量 < 此值则忽略信号
+                                          # 0 = 不过滤（验证阶段可关闭）
+
+  vol_filter_enabled: false               # 波动率过滤开关
+                                          # true: 高波动时段跳过信号
+                                          # false: 不过滤（验证阶段建议关闭）
+
+  vol_threshold: 0.0                      # 波动率阈值
+                                          # 1min realized vol > 此值则跳过
+                                          # 0.0 = 不生效
+
+  cooldown_ms: 3000                       # 止损后冷却时间（毫秒）
+                                          # SL 触发后 N ms 内不开新仓
+                                          # 防止连续止损导致的过度交易
+                                          # 建议范围: 3000-5000ms
+
+# ------------------------------------------------------------------------------
+# 影子成交配置 (Paper Trading / Shadow Execution)
+# ------------------------------------------------------------------------------
+# 【严禁真实下单】仅做虚拟成交记录，用于验证策略 EV
+#
+# 成交假设: Taker BBO（保守估计）
+# 退出条件 (Exit Conditions):
+#   - TP: 价差收敛至 θ_entry × tp_ratio
+#   - SL: 价差发散至 θ_entry × sl_ratio（反向）
+#   - Timeout: 持仓超过 max_hold_ms 强制平仓
+#
+# EV 公式: E[Profit] = p(R - f) + (1-p)(-L - f)
+#   其中 p=胜率, R=平均盈利, L=平均亏损, f=手续费
 paper:
-  tp_ratio: 0.5
-  sl_ratio: 0.5
-  max_hold_ms: 60000
-  slippage_bps: 2
+  tp_ratio: 0.5                           # 止盈比例
+                                          # TP 价差 = θ_entry × (1 - tp_ratio)
+                                          # 0.5 表示价差收敛 50% 即止盈
+                                          # 建议范围: 0.3-0.7
 
-# 输出（JSONL 异步写盘）
+  sl_ratio: 0.5                           # 止损比例
+                                          # SL 价差 = θ_entry × (1 + sl_ratio)
+                                          # 0.5 表示价差发散 50% 即止损
+                                          # 建议范围: 0.3-1.0
+
+  max_hold_ms: 60000                      # 最大持仓时间（毫秒）
+                                          # 超时强制平仓，防止价差不收敛的尾部风险
+                                          # 建议范围: 30000-120000ms (30s-2min)
+
+  slippage_bps: 2                         # 滑点假设 (bps)
+                                          # 模拟真实成交时的价格偏离
+                                          # 开仓滑点 + 平仓滑点 = 总滑点成本
+                                          # 建议范围: 1-5bps
+
+# ------------------------------------------------------------------------------
+# 输出配置 (Output Settings)
+# ------------------------------------------------------------------------------
+# 所有输出为 JSONL 格式（每行一个 JSON 对象），异步写盘
+# 文件类型:
+#   - signals.jsonl:      触发的入场信号
+#   - paper_trades.jsonl: 影子成交记录（含 PnL 分析）
+#   - metrics.jsonl:      系统运行指标（延迟/吞吐/连接状态）
 output:
-  dir: "./output"
-  signals_enabled: true
-  paper_trades_enabled: true
-  metrics_enabled: true
-  metrics_interval_ms: 10000
-  buffer_size: 5000
+  dir: "./output"                         # 输出目录（相对或绝对路径）
+
+  signals_enabled: true                   # 是否输出信号文件
+                                          # 包含: leader, symbol, side, delta_bps, timestamp
+
+  paper_trades_enabled: true              # 是否输出影子成交文件
+                                          # 包含: entry_px, exit_px, gross_pnl_bps,
+                                          #       fee_bps, net_pnl_bps, exit_reason
+
+  metrics_enabled: true                   # 是否输出运行指标文件
+                                          # 包含: updates_per_sec, reconnect_count,
+                                          #       parse_error_count, latency_stats
+
+  metrics_interval_ms: 10000              # 指标输出间隔（毫秒）
+                                          # 建议 5000-30000ms
+
+  buffer_size: 5000                       # 异步写入缓冲区大小
+                                          # Channel 容量，防止写盘阻塞热路径
+                                          # 建议 1000-10000
 
