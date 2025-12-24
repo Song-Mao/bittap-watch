@@ -344,6 +344,13 @@ func runAggregator(
 			}
 			_ = metricsWriter.Write(snap)
 			_ = metricsWriter.Flush()
+			// 同时 flush signals 和 paper_trades，确保数据落盘
+			if signalsWriter != nil {
+				_ = signalsWriter.Flush()
+			}
+			if paperWriter != nil {
+				_ = paperWriter.Flush()
+			}
 		}
 
 		if okxCh == nil && binanceCh == nil && bittapCh == nil {
